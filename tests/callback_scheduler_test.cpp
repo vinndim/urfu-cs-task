@@ -52,3 +52,40 @@ TEST(CallbackSchedulerTest, NotEarlierThanRequested)
     ASSERT_TRUE(signaled) << "Callback was not called in time";
     EXPECT_GE(fired_at, when);
 }
+
+TEST(CallbackSchedulerTest, EarlierTaskInsertedLaterExecutesFirst)
+{
+    using namespace std::chrono_literals;
+
+    std::mutex m;
+    std::condition_variable cv;
+    bool done = false;
+
+    std::vector<int> order;
+
+    CallbackScheduler scheduler;
+
+    auto now = std::chrono::system_clock::now();
+
+    scheduler.Schedule([&]
+    {
+        std::lock_guard lock(m);
+        order.push_back(2);
+    }, now + 800ms);
+
+    scheduler.Schedule([&]
+    {
+        std::lock_guard lock(m);
+        order.push_back(1);
+    }, now + 200ms);
+
+    std::unique_lock lock(m);
+    cv.wait_for(lock, 2s, [&]
+    {
+        return order.size() == 2;
+    });
+
+    ASSERT_EQ(order.size(), 2);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+}
